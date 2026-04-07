@@ -1,0 +1,170 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIA Laboratory Activity 10 - Northwind Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f7f6; }
+        .container { max-width: 1320px; margin: auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+        .card { background: white; padding: 22px; border-radius: 12px; box-shadow: 0 18px 35px rgba(0,0,0,0.08); }
+        .card h2 { color: #2c3e50; margin-bottom: 14px; }
+        .sql-block { background: #f8f9fb; border-left: 4px solid #3498db; padding: 14px; margin-top: 18px; overflow-x: auto; font-size: 0.94rem; line-height: 1.5; }
+        .sql-block code { white-space: pre-wrap; font-family: Consolas, 'Courier New', monospace; }
+        canvas { width: 100% !important; height: 320px !important; }
+        .section-note { color: #5a6772; margin-top: 10px; font-size: 0.95rem; }
+        .error-box { background: #ffe9e7; border-left: 4px solid #e74c3c; padding: 14px; margin-top: 18px; color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Northwind Dashboard</h1>
+        <p>Laboratory Activity 10: All charts in one page with embedded SQL queries</p>
+    </div>
+
+    <div id="errorMessage" class="error-box" style="display:none;"></div>
+
+    <div class="card full-width">
+        <h2>Orders Calendar</h2>
+        <div id="orderCalendar"></div>
+        <div class="section-note">Calendar UI showing every order with customer name and total value.</div>
+        <div class="sql-block"><code>
+
+        </code></div>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="card">
+            <h2>1. Total Revenue by Year</h2>
+            <canvas id="yearRevenueChart"></canvas>
+            <div class="section-note">Chart type: Line chart. Revenue grouped by sales year.</div>
+            <div class="sql-block"><code>
+
+            </code></div>
+        </div>
+
+        <div class="card">
+            <h2>2. Top 10 Monthly Revenue</h2>
+            <canvas id="monthlyRevenueChart"></canvas>
+            <div class="section-note">Chart type: Bar chart. Top 10 months ordered by revenue.</div>
+            <div class="sql-block"><code>
+
+            </code></div>
+        </div>
+
+        <div class="card">
+            <h2>3. Revenue by Product</h2>
+            <canvas id="productRevenueChart"></canvas>
+            <div class="section-note">Chart type: Horizontal bar chart. Best-selling products by revenue.</div>
+            <div class="sql-block"><code>
+
+            </code></div>
+        </div>
+
+        <div class="card">
+            <h2>4. Top 10 Customers by Total Spent</h2>
+            <canvas id="customerRevenueChart"></canvas>
+            <div class="section-note">Chart type: Bar chart. Highest spending customers.</div>
+            <div class="sql-block"><code>
+
+            </code></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function fetchChartData(action) {
+        const apiUrl = window.location.protocol === 'file:'
+            ? 'http://127.0.0.1/SIA01_Lab10_Canlas,A/api.php?action=' + action
+            : './api.php?action=' + action;
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Server returned ${response.status}: ${errorBody}`);
+        }
+        const json = await response.json();
+        if (json.error) {
+            throw new Error(json.error + (json.message ? ' - ' + json.message : ''));
+        }
+        return json;
+    }
+
+    function buildChart(canvasId, type, labels, values, options = {}) {
+        return new Chart(document.getElementById(canvasId), {
+            type,
+            data: { labels, datasets: [{ label: options.label || '', data: values, backgroundColor: options.backgroundColor || '#3498db', borderColor: options.borderColor || '#3498db', fill: options.fill || false }] },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: !!options.showLegend, position: options.legendPosition || 'top' } },
+                scales: options.scales || { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    function initCalendar(events) {
+        const calendarEl = document.getElementById('orderCalendar');
+        const calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            events: events.map(order => ({
+                title: `Order #${order.OrderID} - ${order.CompanyName} ($${parseFloat(order.TotalOrderValue).toFixed(2)})`,
+                start: order.OrderDate,
+                allDay: true
+            })),
+            height: 'auto'
+        });
+        calendar.render();
+    }
+
+    function showError(message) {
+        const errorBox = document.getElementById('errorMessage');
+        errorBox.style.display = 'block';
+        errorBox.textContent = message;
+    }
+
+    async function initDashboard() {
+        try {
+            const calendarData = await fetchChartData('ordersCalendar');
+            initCalendar(calendarData);
+
+            const yearData = await fetchChartData('yearRevenue');
+            buildChart('yearRevenueChart', 'line', yearData.map(r => r.SalesYear), yearData.map(r => parseFloat(r.TotalRevenue)), {
+                label: 'Total Revenue', backgroundColor: 'rgba(52, 152, 219, 0.15)', borderColor: '#3498db', fill: true,
+                scales: { y: { beginAtZero: false, title: { display: true, text: 'Revenue (USD)' } } }, showLegend: true
+            });
+
+            const monthlyData = await fetchChartData('monthlyRevenue');
+            buildChart('monthlyRevenueChart', 'bar', monthlyData.map(r => r['YYYY-MM']), monthlyData.map(r => parseFloat(r.MonthlyRevenue)), {
+                label: 'Monthly Revenue', backgroundColor: '#1abc9c', scales: { y: { beginAtZero: true, title: { display: true, text: 'Revenue (USD)' } } }
+            });
+
+            const productData = await fetchChartData('productRevenue');
+            buildChart('productRevenueChart', 'bar', productData.map(r => r.ProductName), productData.map(r => parseFloat(r.ProductRevenue)), {
+                label: 'Product Revenue', backgroundColor: '#e67e22', scales: { x: { beginAtZero: true, title: { display: true, text: 'Revenue (USD)' } } }, showLegend: false
+            }).options.indexAxis = 'y';
+
+            const customerData = await fetchChartData('customerRevenue');
+            buildChart('customerRevenueChart', 'bar', customerData.map(r => r.CompanyName), customerData.map(r => parseFloat(r.TotalSpent)), {
+                label: 'Total Spent', backgroundColor: '#9b59b6', scales: { y: { beginAtZero: true, title: { display: true, text: 'Total Spent (USD)' } } }, showLegend: false
+            });
+        } catch (error) {
+            console.error(error);
+            showError(error.message);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', initDashboard);
+</script>
+</body>
+</html>
